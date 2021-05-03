@@ -1,0 +1,349 @@
+%matplotlib inline
+import numpy as np 
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.model_selection import train_test_split
+from subprocess import check_output
+from sklearn.metrics import confusion_matrix
+import numpy as np
+from sklearn.manifold import TSNE
+
+from sklearn.model_selection import GridSearchCV
+
+train = pd.read_csv("pml-training.csv", error_bad_lines=False, index_col=False, dtype='unicode')
+
+train.dropna(axis=1,thresh=int(0.20*train.shape[0]),inplace=True)
+train.isnull().sum()
+
+sns.factorplot(x="classe", data=train, kind="count", palette="Set2")
+
+def perform_tsne(X_data, y_data, perplexities, n_iter=1000, img_name_prefix='t-sne'):
+        
+    for index,perplexity in enumerate(perplexities):
+        # perform t-sne
+        print('\nperforming tsne with perplexity {} and with {} iterations at max'.format(perplexity, n_iter))
+        X_reduced = TSNE(verbose=2, perplexity=perplexity).fit_transform(X_data)
+        print('Done..')
+        
+        # prepare the data for seaborn         
+        print('Creating plot for this t-sne visualization..')
+        df = pd.DataFrame({'x':X_reduced[:,0], 'y':X_reduced[:,1] ,'label':y_data})
+        
+        # draw the plot in appropriate place in the grid
+        sns.lmplot(data=df, x='x', y='y', hue='label', fit_reg=False, size=8,\
+                   palette="Set1",markers=[1,2,3,4,5])
+        plt.title("perplexity : {} and max_iter : {}".format(perplexity, n_iter))
+        img_name = img_name_prefix + '_perp_{}_iter_{}.png'.format(perplexity, n_iter)
+        print('saving this plot as image in present working directory...')
+        plt.savefig(img_name)
+        plt.show()
+        print('Done')
+ 
+ 
+train['new_window'] = train['new_window'].map( {'no': 0, 'yes': 1} ).astype(int)
+
+train = train.drop(['Unnamed: 0','cvtd_timestamp'], axis=1)
+
+train['user_name'] =  train['user_name'].map( {'carlitos': 0, 'pedro': 1, 'adelmo': 2, 'charles': 3,
+     'eurico': 4, 'jeremy': 5} ).astype(int)
+
+X_pre_tsne = train.drop(['classe'], axis=1)
+y_pre_tsne = train['classe']
+perform_tsne(X_data = X_pre_tsne,y_data=y_pre_tsne, perplexities =[2,10,20,50])
+
+train_df = pd.read_csv('pml-training.csv', error_bad_lines=False, index_col=False).drop('Unnamed: 0', axis=1)
+test_df = pd.read_csv('pml-testing.csv', error_bad_lines=False, index_col=False).drop('Unnamed: 0', axis=1)
+
+train_df = train_df.sample(frac=1).reset_index(drop=True)
+
+train_df['classe']=train_df['classe'].astype('category')
+pp1=train_df.filter(items=['num_window', 'gyros_belt_x', 'gyros_belt_y', 'accel_belt_x', 'accel_belt_y',  'magnet_belt_x','magnet_belt_y', 'classe'])
+sns.pairplot(pp1, hue='classe',  plot_kws = {'alpha': 0.6,  'edgecolor': 'k'},size = 4)
+
+pp2=train_df.filter(items=['num_window', 'gyros_belt_z', 'accel_belt_z', 'magnet_belt_z', 'classe'])
+sns.pairplot(pp2, hue='classe',  plot_kws = {'alpha': 0.6, 'edgecolor': 'k'},size = 4)
+
+pp3=train_df.filter(items=['num_window', 'gyros_arm_x', 'gyros_arm_y', 'accel_arm_x', 'accel_arm_y',  'magnet_arm_x','magnet_arm_y', 'classe'])
+sns.pairplot(pp3, hue='classe',  plot_kws = {'alpha': 0.6,  'edgecolor': 'k'},size = 4)
+
+#Classification#
+
+X=train.drop(['classe'], axis=1)
+Y=train['classe']
+
+X_train, X_test,Y_train,Y_test = train_test_split(X, Y, test_size = 0.30, random_state=1)
+X_train.shape
+
+#SVC#
+from sklearn.metrics import classification_report
+from sklearn.metrics import accuracy_score
+
+from sklearn.svm import SVC
+svc=SVC()
+svc.fit(X_train, Y_train)
+Y_pred_svc=svc.predict(X_test)
+print("SVC report \n", classification_report(Y_pred_svc,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_svc,Y_test))
+
+#KNN#
+from sklearn.neighbors import KNeighborsClassifier
+KNN=KNeighborsClassifier()
+KNN.fit(X_train, Y_train)
+Y_pred_KNN=KNN.predict(X_test)
+print("K-nearest neighbors Classifier report \n", classification_report(Y_pred_KNN,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_KNN,Y_test))
+
+parameters_KNN = {
+    'n_neighbors': (1,10, 1),
+    'leaf_size': (20,40,1),
+    'p': (1,2),
+    'weights': ('uniform', 'distance'),
+    'metric': ('minkowski', 'chebyshev')}
+                   
+
+clf_knn = GridSearchCV(KNeighborsClassifier(), parameters_KNN,cv=5,n_jobs=-1)
+clf_knn.fit(X_train,Y_train)
+Y_pred_eknn=clf_knn.predict(X_test)
+
+print("K-nearest neighbors Classifier report \n", classification_report(Y_pred_eknn,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_eknn,Y_test))
+print(clf_knn.best_params_)
+
+#GNB#
+from sklearn.naive_bayes import GaussianNB
+GaussNB=GaussianNB()
+GaussNB.fit(X_train, Y_train)
+Y_pred_GNB=GaussNB.predict(X_test)
+print("Gaussian Naive Bayes report \n", classification_report(Y_pred_GNB,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_GNB,Y_test))
+
+GaussNB_classifier = GaussianNB()
+
+params_NB = {'var_smoothing': np.logspace(0,-9, num=100)}
+Gauss_NB = GridSearchCV(estimator=GaussNB_classifier, 
+                 param_grid=params_NB, 
+                 cv=3,
+                 verbose=1, 
+                 scoring='accuracy') 
+Gauss_NB.fit(X_train, Y_train)
+
+Gauss_NB.best_params_
+Y_pred_GaussNB=Gauss_NB.predict(X_test)
+
+print("Gaussian Naive Bayes report \n", classification_report(Y_pred_GaussNB,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_GaussNB,Y_test))
+print(Gauss_NB.best_params_)
+
+#Adaboost#
+
+from sklearn.ensemble import AdaBoostClassifier
+AdaBoost=AdaBoostClassifier()
+AdaBoost.fit(X_train, Y_train)
+Y_pred_AdaBoost=AdaBoost.predict(X_test)
+print("AdaBoost Classifier report \n", classification_report(Y_pred_AdaBoost,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_AdaBoost,Y_test))
+
+#Extra Trees#
+
+from sklearn.tree import ExtraTreeClassifier
+Randtree=ExtraTreeClassifier()
+Randtree.fit(X_train, Y_train)
+Y_pred_Randtree=Randtree.predict(X_test)
+print("Extremely Randomized Trees Classifier report \n", classification_report(Y_pred_Randtree,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_Randtree,Y_test))
+
+#Bagging Classifier#
+
+from sklearn.ensemble import BaggingClassifier
+BaggingC=BaggingClassifier()
+BaggingC.fit(X_train, Y_train)
+Y_pred_BaggingC=BaggingC.predict(X_test)
+print("Bagging Classifier report \n", classification_report(Y_pred_BaggingC,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_BaggingC,Y_test))
+
+BaggingClassifier_parameters = {"n_estimators":list(range(50,60))}
+clf_BaggingC = GridSearchCV(BaggingClassifier(), BaggingClassifier_parameters ,cv=3, verbose=1)
+clf_BaggingC.fit(X_train, Y_train)
+
+Y_pred_BaggC=clf_BaggingC.predict(X_test)
+print("Bagging Classifier report \n", classification_report(Y_pred_BaggC,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_BaggC,Y_test))
+print(clf_BaggingC.best_params_)
+
+#Gradient Boosting#
+
+from sklearn.ensemble import GradientBoostingClassifier
+GradBC=GradientBoostingClassifier()
+GradBC.fit(X_train, Y_train)
+Y_pred_GradBC=GradBC.predict(X_test)
+print("Gradient Boosting Classifier report \n", classification_report(Y_pred_GradBC,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_GradBC,Y_test))
+
+#DT#
+
+from sklearn.tree import DecisionTreeClassifier
+DTreeC=DecisionTreeClassifier()
+DTreeC.fit(X_train, Y_train)
+Y_pred_DTreeC=DTreeC.predict(X_test)
+print("Decision Tree Classifier report \n", classification_report(Y_pred_DTreeC,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_DTreeC,Y_test))
+
+#Random Classifier#
+
+from sklearn.ensemble import RandomForestClassifier
+RandFC=RandomForestClassifier()
+RandFC.fit(X_train, Y_train)
+Y_pred_RandFC=RandFC.predict(X_test)
+print("Random Forest Classifier report \n", classification_report(Y_pred_RandFC,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_RandFC,Y_test))
+
+RandomForestClassifier_parameters = {"n_estimators":list(range(10,20)),"criterion": ["gini", "entropy"]}
+clf_RandFC = GridSearchCV(RandomForestClassifier(), RandomForestClassifier_parameters, cv=3, verbose=1)
+clf_RandFC.fit(X_train, Y_train)
+
+Y_pred_RandomFC=clf_RandFC.predict(X_test)
+print("Random Forest Classifier report \n", classification_report(Y_pred_RandomFC,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_RandomFC,Y_test))
+print(clf_RandFC.best_params_)
+
+#Random Forest and Bagging Classifier#
+
+BaggC_RandF=BaggingClassifier(RandomForestClassifier())
+BaggC_RandF.fit(X_train, Y_train)
+Y_pred_BaggC_RandF=BaggC_RandF.predict(X_test)
+print("Random Forest and Bagging Classifier report \n", classification_report(Y_pred_BaggC_RandF,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_BaggC_RandF,Y_test))
+
+BaggC_DTree = BaggingClassifier(DecisionTreeClassifier())
+BaggC_DTree.fit(X_train, Y_train)
+Y_pred_BaggC_DTree=BaggC_DTree.predict(X_test)
+
+print("Decision and Bagging Classifier report \n", classification_report(Y_pred_BaggC_DTree,Y_test))
+print("Accuracy Score",accuracy_score(Y_pred_BaggC_DTree,Y_test))
+
+#Confusion Matrix#
+
+from sklearn.metrics import confusion_matrix
+
+con_matrix_SVC = confusion_matrix(Y_test,Y_pred_svc)
+con_matrix_SVC =con_matrix_SVC / con_matrix_SVC.astype(np.float).sum(axis=1)
+
+con_matrix_KNN = confusion_matrix(Y_test,Y_pred_KNN)
+con_matrix_KNN =con_matrix_KNN / con_matrix_KNN.astype(np.float).sum(axis=1)
+
+con_matrix_GaussNB = confusion_matrix(Y_test, Y_pred_GaussNB)
+con_matrix_GaussNB =con_matrix_GaussNB / con_matrix_GaussNB.astype(np.float).sum(axis=1)
+
+con_matrix_AdaBoost = confusion_matrix(Y_test, Y_pred_AdaBoost)
+con_matrix_AdaBoost =con_matrix_AdaBoost / con_matrix_AdaBoost.astype(np.float).sum(axis=1)
+
+f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col', sharey='row', figsize=(10,8))
+sns.heatmap(con_matrix_SVC, annot = True,  linewidths=.5, ax=ax1, cbar =None, cmap=plt.cm.Blues)
+ax1.set_title('SVC')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_KNN, annot = True,  linewidths=.5, ax=ax2, cbar =None, cmap=plt.cm.Blues,)
+ax2.set_title('KNN')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_GaussNB, annot = True, linewidths=.5, ax=ax3, cbar =None, cmap=plt.cm.Blues)
+ax3.set_title('GaussNB')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_AdaBoost, annot = True, linewidths=.5, ax=ax4, cbar =None, cmap=plt.cm.Blues)
+ax4.set_title('ABAB')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+
+
+from sklearn.metrics import confusion_matrix
+
+con_matrix_GradBC = confusion_matrix(Y_test, Y_pred_GradBC)
+con_matrix_GradBC =con_matrix_GradBC / con_matrix_GradBC.astype(np.float).sum(axis=1)
+
+con_matrix_BaggingC = confusion_matrix(Y_test, Y_pred_BaggingC)
+con_matrix_BaggingC =con_matrix_BaggingC / con_matrix_BaggingC.astype(np.float).sum(axis=1)
+
+con_matrix_DtreeC = confusion_matrix(Y_pred_DTreeC,Y_test)
+con_matrix_DtreeC =con_matrix_DtreeC / con_matrix_DtreeC.astype(np.float).sum(axis=1)
+
+con_matrix_RandFC = confusion_matrix(Y_test, Y_pred_RandFC)
+con_matrix_RandFC =con_matrix_RandFC / con_matrix_RandFC.astype(np.float).sum(axis=1)
+
+f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col', sharey='row', figsize=(10,8))
+sns.heatmap(con_matrix_GradBC, annot = True,  linewidths=.5, ax=ax1, cbar =None, cmap=plt.cm.Blues)
+ax1.set_title('Gradient Boosting Classifier')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_BaggingC, annot = True,  linewidths=.5, ax=ax2, cbar =None, cmap=plt.cm.Blues,)
+ax2.set_title('Bagging Classifier')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_DtreeC, annot = True, linewidths=.5, ax=ax3, cbar =None, cmap=plt.cm.Blues)
+ax3.set_title('Decision Tree Classifier')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_RandFC, annot = True, linewidths=.5, ax=ax4, cbar =None, cmap=plt.cm.Blues)
+ax4.set_title('Random Forest Classifier')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+
+
+print("Extra Randomised tree Classification")
+con_matrix_Randtree = confusion_matrix(Y_test, Y_pred_Randtree)
+con_matrix_Randtree =con_matrix_Randtree / con_matrix_Randtree.astype(np.float).sum(axis=1)
+sns.heatmap(con_matrix_Randtree, annot=True,cmap=plt.cm.Blues)
+
+#After Cross Validation#
+
+from sklearn.metrics import confusion_matrix
+
+con_matrix_KNN = confusion_matrix(Y_test, Y_pred_eknn)
+con_matrix_KNN =con_matrix_KNN / con_matrix_KNN.astype(np.float).sum(axis=1)
+
+con_matrix_GaussNB = confusion_matrix(Y_test,Y_pred_GaussNB)
+con_matrix_GaussNB =con_matrix_GaussNB / con_matrix_GaussNB.astype(np.float).sum(axis=1)
+
+con_matrix_BaggingC = confusion_matrix(Y_test, Y_pred_BaggC)
+con_matrix_BaggingC =con_matrix_BaggingC / con_matrix_BaggingC.astype(np.float).sum(axis=1)
+
+con_matrix_RandFC = confusion_matrix(Y_test, Y_pred_RandomFC)
+con_matrix_RandFC =con_matrix_RandFC / con_matrix_RandFC.astype(np.float).sum(axis=1)
+
+f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col', sharey='row', figsize=(10,8))
+sns.heatmap(con_matrix_KNN, annot = True,  linewidths=.5, ax=ax1, cbar =None, cmap=plt.cm.Blues)
+ax1.set_title('KNN')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_GaussNB, annot = True,  linewidths=.5, ax=ax2, cbar =None, cmap=plt.cm.Blues,)
+ax2.set_title('GSNB')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_BaggingC, annot = True, linewidths=.5, ax=ax3, cbar =None, cmap=plt.cm.Blues)
+ax3.set_title('Bag C')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_RandFC, annot = True, linewidths=.5, ax=ax4, cbar =None, cmap=plt.cm.Blues)
+ax4.set_title('Random Forest Classifier')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+
+con_matrix_BaggingC_RandFC = confusion_matrix(Y_test, Y_pred_BaggC_RandF)
+con_matrix_BaggingC_RandFC=con_matrix_BaggingC_RandFC / con_matrix_BaggingC_RandFC.astype(np.float).sum(axis=1)
+
+con_matrix_BaggingC_DtreeC = confusion_matrix(Y_test, Y_pred_BaggC_DTree)
+con_matrix_BaggingC_DtreeC=con_matrix_BaggingC_DtreeC / con_matrix_BaggingC_DtreeC.astype(np.float).sum(axis=1)
+
+f, (ax1, ax2) = plt.subplots(1, 2, sharex='col', sharey='row', figsize=(8,4))
+sns.heatmap(con_matrix_BaggingC_RandFC, annot = True,  linewidths=.5, ax=ax1, cbar =None,  cmap=plt.cm.Blues)
+ax1.set_title('Bagging Classifier-RF')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+sns.heatmap(con_matrix_BaggingC_DtreeC, annot = True, linewidths=.5, ax=ax2, cbar =None, cmap=plt.cm.Blues)
+ax2.set_title('Bagging Classifier-DT')
+plt.ylabel('True label')
+plt.xlabel('Predicted label')
+
+
